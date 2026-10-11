@@ -115,6 +115,8 @@ struct Team {
     string name;
     map<char, ProblemStatus> problems;
     vector<Submission> submissions;
+    mutable vector<int> cachedSolveTimes;
+    mutable bool solveTimesCacheValid = false;
     
     Team() = default;
     Team(const string& n) : name(n) {}
@@ -122,6 +124,7 @@ struct Team {
     void addSubmission(const Submission& sub, bool frozen) {
         submissions.push_back(sub);
         problems[sub.problemName[0]].addSubmission(sub.status, sub.time, frozen);
+        solveTimesCacheValid = false; // Invalidate cache
     }
     
     int getSolvedCount() const {
@@ -140,15 +143,18 @@ struct Team {
         return total;
     }
     
-    vector<int> getSolveTimes() const {
-        vector<int> times;
-        for (const auto& p : problems) {
-            if (p.second.solveTime != -1) {
-                times.push_back(p.second.solveTime);
+    const vector<int>& getSolveTimes() const {
+        if (!solveTimesCacheValid) {
+            cachedSolveTimes.clear();
+            for (const auto& p : problems) {
+                if (p.second.solveTime != -1) {
+                    cachedSolveTimes.push_back(p.second.solveTime);
+                }
             }
+            sort(cachedSolveTimes.rbegin(), cachedSolveTimes.rend());
+            solveTimesCacheValid = true;
         }
-        sort(times.rbegin(), times.rend());
-        return times;
+        return cachedSolveTimes;
     }
     
     bool hasFrozenProblems() const {
@@ -269,8 +275,9 @@ struct Competition {
             
             if (penaltyA != penaltyB) return penaltyA < penaltyB;
             
-            vector<int> timesA = teamA.getSolveTimes();
-            vector<int> timesB = teamB.getSolveTimes();
+            // Compare solve times from largest to smallest
+            const vector<int>& timesA = teamA.getSolveTimes();
+            const vector<int>& timesB = teamB.getSolveTimes();
             
             int minSize = min(timesA.size(), timesB.size());
             for (int i = 0; i < minSize; i++) {
@@ -321,6 +328,7 @@ struct Competition {
             
             // Unfreeze the problem
             teams[targetTeam].problems[targetProblem].unfreeze();
+            teams[targetTeam].solveTimesCacheValid = false; // Invalidate cache
             
             // Recalculate rankings
             calculateRankings();
