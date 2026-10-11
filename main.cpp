@@ -50,12 +50,14 @@ struct ProblemStatus {
     int submissionsAfterFreeze = 0;
     bool isFrozen = false;
     bool solvedBeforeFreeze = false;
+    vector<pair<Status, int>> frozenSubmissions; // (status, time) for submissions during freeze
     
     void addSubmission(Status status, int time, bool frozen) {
         if (solvedBeforeFreeze) return; // already solved before freeze
         
         if (frozen) {
             submissionsAfterFreeze++;
+            frozenSubmissions.push_back({status, time});
         } else {
             if (status == Status::Accepted && solveTime == -1) {
                 solveTime = time;
@@ -74,6 +76,18 @@ struct ProblemStatus {
     
     void unfreeze() {
         isFrozen = false;
+        
+        // Process all frozen submissions
+        for (const auto& sub : frozenSubmissions) {
+            if (sub.first == Status::Accepted && solveTime == -1) {
+                solveTime = sub.second;
+                solvedBeforeFreeze = true;
+            } else if (sub.first != Status::Accepted && solveTime == -1) {
+                wrongAttempts++;
+            }
+        }
+        
+        frozenSubmissions.clear();
     }
     
     int getPenaltyTime() const {
@@ -311,29 +325,29 @@ struct Competition {
             // Recalculate rankings
             calculateRankings();
             
-            // Check if ranking changed
+            // Check if ranking changed and record the change
             if (oldRanking != teamRanking) {
-                // Find the team that moved up
-                for (int i = 0; i < teamRanking.size(); i++) {
-                    if (teamRanking[i] == targetTeam) {
-                        int newRank = i + 1;
-                        int oldRank = 0;
-                        for (int j = 0; j < oldRanking.size(); j++) {
-                            if (oldRanking[j] == targetTeam) {
-                                oldRank = j + 1;
-                                break;
-                            }
-                        }
-                        
-                        if (newRank < oldRank && newRank <= oldRanking.size()) {
-                            string displacedTeam = oldRanking[newRank - 1];
-                            int solved = teams[targetTeam].getSolvedCount();
-                            int penalty = teams[targetTeam].getTotalPenaltyTime();
-                            rankingChanges.push_back(targetTeam + " " + displacedTeam + " " + 
-                                                   to_string(solved) + " " + to_string(penalty));
-                        }
+                // Find positions of target team in old and new rankings
+                int oldPos = -1, newPos = -1;
+                for (int i = 0; i < oldRanking.size(); i++) {
+                    if (oldRanking[i] == targetTeam) {
+                        oldPos = i;
                         break;
                     }
+                }
+                for (int i = 0; i < teamRanking.size(); i++) {
+                    if (teamRanking[i] == targetTeam) {
+                        newPos = i;
+                        break;
+                    }
+                }
+                
+                if (newPos >= 0 && oldPos >= 0 && newPos < oldPos && newPos < oldRanking.size()) {
+                    string displacedTeam = oldRanking[newPos];
+                    int solved = teams[targetTeam].getSolvedCount();
+                    int penalty = teams[targetTeam].getTotalPenaltyTime();
+                    rankingChanges.push_back(targetTeam + " " + displacedTeam + " " + 
+                                           to_string(solved) + " " + to_string(penalty));
                 }
             }
         }
